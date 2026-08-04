@@ -1,6 +1,6 @@
-# Operit 插件开发技能（SandboxPackage_DEV）
+# Operit 插件开发技能（operit-plugin-dev-skill）
 
-在任意桌面环境（Windows / macOS / Linux + Claude Code）指导开发 Operit app 插件的 Claude Code skill。
+在任意桌面环境（Windows / macOS / Linux）指导开发 Operit app 插件的skill。
 
 - 以**官方 ToolPkg** 为范例（参考 Operit 仓库 `examples/` 下官方插件源码）。
 - 使用与官方 app **协调的 Compose DSL UI**（`ctx.MaterialTheme.colorScheme`，而非硬编码十六进制色）。
@@ -11,19 +11,19 @@
 ## 目录结构
 
 ```
-SandboxPackage_DEV/
+operit-plugin-dev-skill/
 ├── SKILL.md                          # 技能主文档（使用说明与开发指导）
-├── references/
-│   ├── SCRIPT_DEV_GUIDE.md           # 脚本开发指南（离线回退副本）
-│   └── TOOLPKG_FORMAT_GUIDE.md       # ToolPkg 格式/打包指南（离线回退副本）
-└── .gitignore
+└── references/
+    ├── SCRIPT_DEV_GUIDE.md           # 脚本开发指南（离线回退副本）
+    └── TOOLPKG_FORMAT_GUIDE.md       # ToolPkg 格式/打包指南（离线回退副本）
+
 ```
 
 ## 使用方式
 
-将本目录作为 Claude Code skill 使用：
+将本目录作为 Agent skill 使用：
 
-1. 在 Claude Code 中引用本技能（`SandboxPackage_DEV`）。
+1. 在 Agent 中引用本技能（`operit-plugin-dev-skill`）。
 2. 按 SKILL.md 第 1 节确认定位与原则。
 3. 按 SKILL.md 第 2 节获取 Operit 权威资料：**开发前先询问用户本地是否已有 Operit 仓库**（由用户提供路径）；没有则从官方仓库 clone：
    ```bash

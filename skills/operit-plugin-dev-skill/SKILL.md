@@ -1,9 +1,9 @@
 ---
-name: SandboxPackage_DEV
+name: operit-plugin-dev-skill
 description: 在任意桌面环境（Windows/macOS/Linux）指导开发 Operit 插件：以官方 ToolPkg 为范例，使用与官方 app 协调的 Compose DSL UI（MaterialTheme），正确注册侧边栏入口并使用官方 Operit API。
 ---
 
-# SandboxPackage_DEV
+# operit-plugin-dev-skill
 
 ## 第 1 节：技能定位与原则
 
