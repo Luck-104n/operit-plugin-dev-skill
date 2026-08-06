@@ -16,6 +16,7 @@ description: 在任意桌面环境（Windows/macOS/Linux）指导开发 Operit �
 3. **正确使用官方 API**：注册入口用 `ToolPkg.registerToolboxUiModule` / `registerNavigationEntry` / `registerUiRoute` / `registerDesktopWidget` 等官方注册函数，不凭记忆猜 API。
 4. **任意工作目录**：技能不绑定特定工作区。开发时可在当前工作目录直接创建 `src/`、`manifest.json`、`ui/` 等结构。
 5. 编译与静态检查在桌面完成；真机验证（若可用 adb 连接装有 Operit app 的安卓设备）是可选步骤，不强制。
+6. **实战经验必读**：开发前先阅读本技能 `references\Operit插件开发指南.md` 与 `references\Operit插件开发踩坑记录.md`（CMS/CME 血泪总结），避免重蹈 mount 风暴、bridge 响应错配等平台级大坑。
 
 ## 第 2 节：权威资料引用（如何获取 Operit 权威资料）
 
@@ -47,6 +48,8 @@ Operit 源码与 API 的**最终权威**是官方 GitHub 仓库：`https://githu
    - `message_insert\src\`：消息处理/Prompt hook 官方范例。
 3. 官方仓库 `docs\SCRIPT_DEV_GUIDE.md`、`docs\TOOLPKG_FORMAT_GUIDE.md` —— 官方格式指南（权威版）。
 4. 本技能 `references\TOOLPKG_FORMAT_GUIDE.md` —— 打包规范参考，与官方仓库 `Operit\docs\TOOLPKG_FORMAT_GUIDE.md` 一致。脚本规范参考 `references\SCRIPT_DEV_GUIDE.md`。**两者均为离线回退副本，与上游冲突时以上游为准。**
+5. 本技能 `references\Operit插件开发指南.md` —— **必读**：CMS/CME 实战总结（框架与 React 差异、13 条开发原则、打包注意事项、导入失败排查）。
+6. 本技能 `references\Operit插件开发踩坑记录.md` —— **必读**：CMS v1.6→v1.8.4 与 CME 全部真实踩坑（mount 风暴、两层竞态、bridge 响应错配、探针设计、Python worker 后端实测、CME 独立后端要点）。
 
 **查阅方式**：用通用工具检索，不依赖 Operit app 专属命令。用 `grep`（或项目内 grep 工具）在 `examples\types\` 搜关键字，再用文件读取工具读取命中片段。不要默认整读大文件（如 `compose-dsl.d.ts`、`toolpkg.d.ts`），避免撑爆上下文。官方包源码若不确定结构，先列目录再按需读取。
 

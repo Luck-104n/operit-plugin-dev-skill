@@ -15,7 +15,9 @@ operit-plugin-dev-skill/
 ├── SKILL.md                          # 技能主文档（使用说明与开发指导）
 └── references/
     ├── SCRIPT_DEV_GUIDE.md           # 脚本开发指南（离线回退副本）
-    └── TOOLPKG_FORMAT_GUIDE.md       # ToolPkg 格式/打包指南（离线回退副本）
+    ├── TOOLPKG_FORMAT_GUIDE.md       # ToolPkg 格式/打包指南（离线回退副本）
+    ├── Operit插件开发指南.md        # 【必读】CMS/CME 实战开发指南（框架差异/13条原则/打包排查）
+    └── Operit插件开发踩坑记录.md    # 【必读】CMS/CME 踩坑全记录（mount风暴/bridge错配/两层竞态/CME要点）
 
 ```
 
@@ -29,8 +31,9 @@ operit-plugin-dev-skill/
    ```bash
    git clone https://github.com/AAswordman/Operit.git
    ```
-4. 按 SKILL.md 第 3-4 节开发 UI 与注册入口。
-5. 按 SKILL.md 第 6 节打包（规范见 `references/TOOLPKG_FORMAT_GUIDE.md` 第 4 节），只打包必要文件。
+4. **先读实战经验必读**：`references/Operit插件开发指南.md` 与 `references/Operit插件开发踩坑记录.md`（CMS/CME 血泪总结，避免平台级大坑）。
+5. 按 SKILL.md 第 3-4 节开发 UI 与注册入口。
+6. 按 SKILL.md 第 6 节打包（规范见 `references/TOOLPKG_FORMAT_GUIDE.md` 第 4 节），只打包必要文件。
 
 ## 权威来源
 
