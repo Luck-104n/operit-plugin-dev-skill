@@ -247,3 +247,53 @@ CME 与 CMS 前端同源（共用 memory_system_ui），因此 **CMS 的全部�
 ```
 
 *本记录与《Operit 插件开发指南》配套，欢迎后来者少走弯路。*
+
+## 十一、CME v2.x 补充战役（2026-08-08）
+
+> 冷启动 ANR、时区体系、竞态机制、UI 转圈、配置持久化——上午完整闭环的实战经验，全部有日志实锤。
+
+### 11.1 高频渲染风暴实例：loadData 防抖（v2.2.3）
+
+- **现象**：高频操作（连续删除/勾选/切换）时 UI 卡顿
+- **实锤**：Operit 全量重绘——**1 分钟 45+ 次渲染**
+- **修复**：loadData 防抖 300ms，高频操作合并为一次全量拉取
+- **教训**：每次 setState 都可能触发整屏 XML 重建，高频操作必须限流（对应指南 4.3）
+
+### 11.2 冷启动 ANR：worker 拉起等待窗口不足
+
+- **现象**：冷启动后打开插件卡死闪退（ANR：Input dispatching timed out）
+- **根因链**：冷启动早期 terminal/executor 未就绪 → detectPython 硬等 32s（4 候选路径各 8s 超时）→ worker 拉不起 → 每个依赖 worker 的工具调用内部又同步触发 ensureWorkerUp → 再阻塞 → 主线程被拖死
+- **次生 bug**：ensureWorkerUp 拉起脚本后**固定 sleep 3s 就 ping**，但 worker 启动需 4-5s（onnx 模型加载 + GPU 探测）→ **每次都误报"拉起后 worker 仍未响应"**（三次实测同秒 listening 仍报失败）→ 修复：轮询 ping（每 2s，最长 10-15s）
+- **教训**：① 启动窗口探测不能猜固定值，要轮询；② 工具调用在依赖未就绪时**必须快速失败**，不能同步阻塞（阻塞会拖死主线程）
+
+### 11.3 环境探测失败：先分清"没有"还是"超时"
+
+- **现象**：hiddenExec 探测 python3 报"未找到可用的 python3"，但 Ubuntu 环境里 python3 明明全都在
+- **错误结论**（两次）：① "hiddenExec 的 shell 是安卓 shell 没有 python3" ② "沙盒模式探测不到"
+- **正确结论**：diag_engine 直接实测 hiddenExec——**环境探测超时**（连 `command -v python3` 都不返回），detectPython 拿不到输出才误报"未找到"
+- **根因**：Operit 重启早期（30-80s 窗口）Ubuntu/proot 初始化未完成，此时调 hiddenExec 触发 executor 会话竞态（坏会话导致后续永久卡）；proot 热重建只需 2s（六次实测），冷启动（长时间放置）初始化慢 → 快速点开插件命中竞态
+- **教训**：**"环境探测失败"要先分清是"没有"还是"超时"**，不能猜环境差异——探测命令加超时标记、区分错误类型
+
+### 11.4 UI 初始化被慢调用阻塞（转圈问题）
+
+- **现象**：退出重进后打开插件有时转圈 5-8s，有时秒进（约 50/50 随机）
+- **实锤机制**：UI 初始化时 save_ui_state（平台自动调用）与 trigger_analysis（UI JS 调用）**并发时序竞争**——碰巧并行时，save_ui_state 同步等 worker 拉起（约 5s）堵住平台回调队列，trigger_analysis 结果（早已完成）排队延迟回传 → [init] 延迟 → 转圈；串行时秒进
+- **与 kill worker 无关**（七轮对照实验：不 kill 5 次秒进 2/转圈 3，kill 2 次全秒进样本小疑似巧合）
+- **教训**：**任何工具调用在依赖离线时都不能同步等待**——无论并发时序如何，快速失败 + 后台拉起才能保证平台回调队列不被堵
+
+### 11.5 日志时间戳时区统一
+
+- **问题**：CME 三层日志三个时区（JS 固定 UTC / worker 跟随 proot / operit.log 跟随系统），排查时看岔时间线（把凌晨当上午）
+- **实锤**：operit.log 跟随系统时区（Java 进程启动时缓存默认时区，重启才刷新）——`cmd alarm set-timezone` 切换实验实锤（`settings put global time_zone` 在 vivo 无效）
+- **方案**：proot Ubuntu 改回 UTC 惯例（重装直接跑）+ worker 日志 `time.gmtime(time.time()+8*3600)` 固定北京时间 + JS 日志跟随系统 → **三处统一北京**
+- **教训**：多进程/多运行时系统，日志时区必须显式统一并写入文档，否则排障成本剧增
+
+### 11.6 进程树关系：退出 app 连带杀死 worker
+
+- **事实**：worker 跑在 proot 内、proot 是 Operit 的子进程——退出/划掉 app → Operit 被杀 → proot 连带被杀 → **worker 必死**
+- **教训**：不要假设"worker 能跨 app 重启存活"；只要 app 重启过，worker 一定需要重新拉起（启动流程必须幂等、自动）
+
+### 11.7 配置持久化与 env 缓存
+
+- **实锤**：插件 API 配置（MEMORY_SYSTEM_ENDPOINT/KEY/MODEL）存在 Operit 应用私有数据 `shared_prefs/env_preferences.xml`——`ctx.setEnv/getEnv` 是平台级持久化，**卸载重装插件不清除**（所以"配置不需要重新设置"）；不是读 Operit 自己的 API 配置（datastore/api_settings）
+- **隐患**：CACHED_MEMORIES/CACHED_PERSONA 等大 JSON 缓存也塞在 env 里（文件 92KB+），每次读写序列化整个 XML——缓存类数据应落文件，env 只留配置与轻量状态
