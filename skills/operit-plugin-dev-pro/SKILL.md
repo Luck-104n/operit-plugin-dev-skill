@@ -1,75 +1,98 @@
 ---
 name: operit-plugin-dev-pro
-description: Operit 插件开发（手机端加强版）——官方 SandboxPackage_DEV 的实战增强：内置 CMS/CME 血泪踩坑记录与前端工程实践指南，开发插件时优先使用本 skill。
+description: 在 Operit Android App 内开发、续写、调试、安装和排查 Sandbox Package 或 ToolPkg 的手机端增强工作流。与官方 SandboxPackage_DEV 配合使用，专门处理 /sdcard 开发目录、types 同步、operit_editor 调试安装、Compose DSL 生命周期、真机探针、部署未生效和 proot/worker 问题。用户在手机端开发 Operit 插件、使用 operit_editor、debug_run_sandbox_script、debug_install_toolpkg，或遇到 UI 不刷新、工具无响应、安装后仍是旧代码时使用。
 ---
 
-# operit-plugin-dev-pro
+# Operit 插件手机端开发增强
 
 ## 定位
 
-官方 `SandboxPackage_DEV` 的加强版。分工互补：
+与官方 `SandboxPackage_DEV` 同时使用：
 
-| 层 | 内容 | 来源 |
-|---|---|---|
-| **格式层** | 类型定义、官方示例、工具脚本/ToolPkg 格式指南（怎么写） | 官方 SandboxPackage_DEV |
-| **实战层** | 铁律清单、前端工程实践、血泪踩坑、架构建议（怎么不踩坑） | **本 skill（references/）** |
+- 官方技能负责最新格式、types、内置示例、API 和发布流程。
+- 本技能负责 Android 端工作区准备、调试安装、真机验证和复杂故障定位。
 
-手机端开发插件：**用这一个 skill 就够了**——官方管格式，本 skill 管实战。
+不要复制官方技能已经维护的类型和格式指南。不得用本技能的历史案例覆盖当前官方 types 或源码。
 
-## 依赖与前置
+## 开始前
 
-- 官方 `SandboxPackage_DEV` 必须已安装（types / examples / 两份 guide 从那里取，**不在此重复维护**）。
-- 每次正式开始新的开发任务前，按官方 SKILL.md 第一部分重跑安装脚本，更新 types 与官方 guide。
+1. 明确目标、插件格式、已有包位置和成功标准。续写已有包时保留原 packageId、名称和目录结构。
+2. 按官方 `SandboxPackage_DEV` 第一部分重新运行安装/更新脚本。
+3. 从官方技能检索当前 types、guide 和相近示例；不要凭旧记忆写 API。
+4. 选择格式：普通工具优先使用 Sandbox Package；只有 UI、资源、子包、导航、widget 或宿主 hook 才使用 ToolPkg。
+5. 使用 `/sdcard/Download/Operit/dev_package/{packageId}/` 作为项目目录；共享类型位于兄弟目录 `/sdcard/Download/Operit/dev_package/types/`。
 
-## 资料地图（按需查阅，不整读）
+## 准备工作区
 
-| 场景 | 查什么 | 位置 |
-|---|---|---|
-| 工具脚本写法 / METADATA / 参数 / 返回结构 | SCRIPT_DEV_GUIDE.md | 官方 `references/` |
-| ToolPkg manifest / UI / 注册 / hook | TOOLPKP_FORMAT_GUIDE.md（即 TOOLPKG_FORMAT_GUIDE.md） | 官方 `references/` |
-| 类型定义 | types/*.d.ts | 官方 `types/`（开发时复制到 `dev_package/types/`） |
-| **实战铁律（动手前必读）** | Operit插件开发指南.md | **本 skill `references/`** |
-| **排障对照（出问题时必查）** | Operit插件开发踩坑记录.md | **本 skill `references/`** |
+调用 `operit_editor:debug_run_sandbox_script` 执行 `scripts/prepare_dev_workspace.js`：
 
-## 开发硬规则（铁律前置摘要，完整版见《开发指南》）
+```json
+{
+  "source_path": "/sdcard/Download/Operit/skills/operit-plugin-dev-pro/scripts/prepare_dev_workspace.js",
+  "params_json": "{\"package_id\":\"com.example.plugin\"}"
+}
+```
 
-1. **render() 必须无副作用**——禁止在 render 中写文件、setEnv、callAPI、setState；数据流单向：用户行为 → 业务逻辑 → 状态变化 → 渲染。
-2. **异步事件处理器必须返回 Promise**——不要在事件回调中直接调用异步函数而丢弃其返回值（异常被吞、状态永不更新）。
-3. **所有 ctx.callTool 统一串行队列**——禁止 Promise.all 并发依赖返回顺序（bridge 会错配响应，实测错配率 90%→2% 靠串行根治）。
-4. **模块级变量不可靠**——每次挂载重新 require，boot 锁/缓存/防重入必须挂 state 或 setEnv。
-5. **高频事件必须 debounce / throttle / batch**——每次 setState 都可能触发整屏 XML 重建，不做限流会渲染风暴（实测 1 分钟 45+ 次重绘）。
-6. **删除/修改用乐观更新**——立即更新 UI，后台执行，失败恢复；不报错、不卡顿。
-7. **缓存 + TTL**——角色数据 5s、列表数据 30s；首帧读缓存秒开；**失败不缓存空**。
-8. **大列表不要一次渲染**——分页 / 虚拟列表 / lazy load / 搜索优先。
-9. **前端职责限制**——前端只做展示、轻量交互、状态触发、用户确认；复杂数据操作统一交给后端 Python worker（CME 架构验证：重计算下沉后 UI 永不卡）。
-10. **工具调用在依赖离线时必须快速失败**——不能同步阻塞等待（阻塞会拖死主线程、堵平台回调队列，冷启动 ANR 与 UI 转圈的共同根因）。
+脚本创建项目目录，并把官方技能的完整 `types/` 同步到共享类型目录。它不会清空或重建已有项目。
 
-## 排障方法论（《踩坑记录》第八节）
+## 开发流程
 
-1. **先澄清现象定义**——"空加载"=有 UI 没条目，"不恢复"=加载失败后一直空；定义错了方向全错。
-2. **打探针，不猜**——工具出口 OUT bytes 直写文件、前端入口 IN bytes 打日志，四点定位（工具出口→bridge→JS 入口→UI props）。
-3. **分层定位**——render 层 → 生命周期 → 数据链 → bridge，逐层排除。
-4. **守卫防御 + 治本**——守卫（失败不覆盖旧数据）保证不恶化，治本（串行队列/纯函数/快速失败）消灭根因。
-5. **一轮一个变量**——每个版本只改一件事，用 log 验证，失败就换假设。
-6. **外部审计**——把 log + 分析报告给独立视角审阅，往往能提出关键实验设计。
+1. 普通包：从官方 `SCRIPT_DEV_GUIDE.md` 检索 METADATA、目标工具和返回类型，优先写 TS，再编译为 JS。
+2. ToolPkg：从官方 `TOOLPKG_FORMAT_GUIDE.md` 和 `types/toolpkg.d.ts` 核对 manifest、注册函数与 hook；从同型官方示例复制 tsconfig 结构。
+3. Compose DSL：仅在涉及 UI 时读取 `references/COMPOSE_DSL_RULES.md`。把规则按“平台不变量、当前版本约束、项目策略”区分，不把案例参数当默认值。
+4. 编译后执行 `scripts/inspect_package.js` 检查项目结构和 manifest 引用。
+5. 普通脚本使用 `operit_editor` 的相应 JS 包调试入口；ToolPkg 使用 `debug_install_toolpkg`。安装后调用真实工具或打开真实 UI，不以 `debug_run_sandbox_script` 结果替代宿主验证。
+6. 执行 `scripts/verify_deployment.js` 核对开发源和外部安装包。涉及 UI/注册缓存时重启 Operit，再验证实际界面和日志。
 
-## 架构建议
+## 调试决策
 
-复杂插件（记忆系统、检索、批量分析）推荐 CME 架构：**前端专注 UI，重计算下沉独立 Python worker**（本地数据库 + 词嵌入 + 语义检索），独立进程隔离重负载，前端只做转发与展示。对比 CMS 前端集中式架构，稳定性和可维护性都显著更好。
+出现问题时先读取 `references/DEBUG_PLAYBOOK.md`，按症状定位：
 
-注意 worker 场景的平台事实（踩坑记录 11.x 已实锤）：
-- 退出 app → Operit 被杀 → proot 连带被杀 → **worker 必死**，启动流程必须幂等、自动。
-- worker 冷启动慢（模型加载 4-5s），拉起后要**轮询 ping**（每 2s 最长 10-15s），不要固定 sleep 3s。
-- 环境探测失败先分清"没有"还是"超时"。
-- 插件 API 配置用 `ctx.setEnv/getEnv` 是平台级持久化（shared_prefs），卸载重装不清除；大 JSON 缓存不要塞 env（会膨胀到 90KB+，每次读写序列化整个 XML）。
+- UI 卡死或反复挂载：先查 render 副作用与状态写入。
+- 异步完成但 UI 不刷新：先查 action/onLoad 生命周期和当前源码行为。
+- 工具无响应或结果错位：先建立最小并发探针；在当前版本未证明并发安全前串行化相关调用。
+- 安装成功但代码未变化：检查源文件、安装包、manifest 版本，再重启 Operit 排除内存旧实例。
+- worker 启动失败：分开检查环境不存在、启动超时、readiness 未完成和进程已被宿主终止。
 
-## 开发目录与流程
+只有需要历史证据或复现 CMS/CME 架构时才读取 `references/CASE_STUDIES_CMS_CME.md`。其中的版本号、设备行为、TTL、路径和 worker 结论都属于案例范围，采用前必须在当前项目验证。
 
-- 开发目录：`/sdcard/Download/Operit/dev_package/{packageId}/`（types 复制到兄弟目录 `dev_package/types/`，不放进包内）。
-- 优先普通 JS 包脚本；需求涉及配置界面/工具箱/hook/lifecycle 时才升级 ToolPkg。
-- 基于已有包继续开发必须沿用原 packageId，在原有文件结构上修改。
-- 拿不准的接口先用 `operit_editor:debug_run_sandbox_script` 做最小片段验证。
+## 规则分级
 
-## 发布
+始终遵守：
 
-按官方 `SandboxPackage_DEV` 第三部分执行：路线 A（本地打包直接上传）或路线 B（仓库维护 + 引用 GitHub Release）。
+- render/UI 树构造保持无副作用。
+- API 与字段以刚更新的官方 types 和示例为准。
+- 调试探针不改变业务控制流，并记录真实参数、结果和时间。
+- 运行时问题必须在真实 Operit 工具/UI 路径验证。
+
+需要当前版本验证：
+
+- `ctx.callTool` 并发响应关联；未验证时默认串行相关调用，但不要永久禁止所有并发。
+- 异步 `setState`、onLoad/action 窗口和重绘触发方式。
+- 模块实例生命周期、env 持久化和 ToolPkg 缓存刷新。
+
+仅在需求成立时采用：
+
+- debounce、TTL、乐观更新和分页的具体数值。
+- Python/proot worker、常驻服务与文件完成信号。
+- CMS/CME 的固定路径、模型启动时间和恢复策略。
+
+## 验证与交付
+
+- 官方技能已更新，项目使用当前完整 types。
+- 已说明选择普通包或 ToolPkg 的原因。
+- TS 编译通过，检查脚本未发现缺失引用。
+- 已通过真实工具调用或真实 UI 验证宿主行为。
+- ToolPkg 安装后核对源包、外部安装包、manifest 版本；UI/注册变化后重启 Operit。
+- 未能验证的 QuickJS、bridge、权限、生命周期或设备行为必须单独列为风险。
+- 发布继续遵循官方 `SandboxPackage_DEV` 的市场发布流程。
+
+## 资源导航
+
+- `references/MOBILE_WORKFLOW.md`：完整手机端命令与 `operit_editor` 调用顺序。
+- `references/COMPOSE_DSL_RULES.md`：按证据等级整理的 UI/异步规则。
+- `references/DEBUG_PLAYBOOK.md`：按症状组织的排障流程。
+- `references/CASE_STUDIES_CMS_CME.md`：CMS/CME 历史实验和版本战役，仅作案例证据。
+- `scripts/prepare_dev_workspace.js`：创建工作区并同步官方 types。
+- `scripts/inspect_package.js`：静态检查普通包或 ToolPkg 目录。
+- `scripts/verify_deployment.js`：检查开发源与外部安装产物。

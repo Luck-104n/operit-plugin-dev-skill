@@ -1,4 +1,16 @@
-# Operit 插件开发踩坑记录
+# CMS/CME 插件开发案例记录
+
+> 本文保存 CMS/CME 在特定 Operit 版本、设备、proot 和插件架构下的实验记录。文中的“必须”“实锤”“平台级”等表述描述当时案例结论，不自动代表当前 Operit 或其他插件。采用任何结论前，先核对当前官方 types、源码并在目标设备建立最小复现。
+
+> 本文件是 PC 与 Android Pro 两个 Skill 的共同维护源。仓库内只编辑 `shared/references/CASE_STUDIES_CMS_CME.md`，再运行 `node scripts/sync-shared-references.mjs` 生成两个 Skill 的分发副本。
+
+## 内容导航
+
+- 一至二：运行环境与后端/工具调用实验
+- 三至八：UI 卡死、空加载、数据通道、竞态、探针与排障方法
+- 九至十：CME 架构与协作复盘
+- 十一：CME v2.x 冷启动、时区、进程和配置案例
+- 十二：异步渲染、完成信号、环境探测和部署核验案例
 
 > 记录 CMS（Character Memory System）v1.6.x → v1.8.4 与 CME（Character Memory Engine）开发战役的全部真实踩坑与解决过程。
 > 这是用血泪换来的第一手资料，配合《Operit 插件开发指南》阅读。

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Operit 插件桌面开发"
+  short_description: "在 PC 上开发、校验和打包官方兼容的 Operit 插件"
+  default_prompt: "使用 $operit-plugin-dev-skill 在桌面端开发并验证一个 Operit 插件。"

@@ -1,7 +1,5 @@
 # ToolPkg 格式说明文档
 
-> 本文件为离线参考副本。权威版本在官方仓库 `https://github.com/AAswordman/Operit` 的 `docs/TOOLPKG_FORMAT_GUIDE.md`（可 clone 后获取，网络受限时按全局代理规则设置代理）。与上游冲突时以上游为准；类型定义优先参考仓库 `examples/types/`
-
 ## 1. 简介
 
 **ToolPkg** 是 Operit 项目中用于打包和分发工具包的标准格式。它允许开发者将多个相关的工具脚本、资源文件和 UI 模块打包成一个单一的、易于分发和管理的文件。

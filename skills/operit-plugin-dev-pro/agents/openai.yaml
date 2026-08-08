@@ -1,0 +1,4 @@
+interface:
+  display_name: "Operit 插件手机端增强"
+  short_description: "在 Operit 安卓端开发、真机安装、验证和排查插件问题"
+  default_prompt: "使用 $operit-plugin-dev-pro 在 Operit 手机端开发并真机验证一个插件。"
