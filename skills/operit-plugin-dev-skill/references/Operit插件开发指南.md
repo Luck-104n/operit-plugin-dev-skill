@@ -185,4 +185,23 @@ Operit 插件前端：
 
 **复杂数据操作统一交给后端 Python 服务（如果有）**——CME 的架构验证：重计算（嵌入推理、语义检索、批量分析）全部下沉 Python worker，前端只做展示与交互，UI 始终流畅、无卡顿无超时（详见踩坑记录第二章实验一）。
 
+### 4.8 异步刷新正解：onLoad 长窗口（源码级机制，v2.3.2 实锤）
+
+**背景**：compose_dsl UI 树只在 ①初始渲染 ②action 分发 ③文本输入 ④平台侧 rerender 时重建；**异步 setState（setTimeout/Promise 回调）只写 stateStore，不触发平台重绘**——所以"自动分析完成后更新数据"这类纯异步路径默认不显示，必须用户交互（切 tab/点击）才刷新。
+
+**正解（已验证）**：根节点 `onLoad` 本身是平台 action 分发，分发期间订阅 stateChange——在 onLoad 末尾保持窗口：
+
+```js
+return UI.Column({ fillMaxSize: true, padding: 8, onLoad: async function() {
+  // ... 正常初始化（loadData 等）
+  // 保持 action 窗口：期间任何异步 setState（含 setTimeout 链）都会推送中间渲染
+  await new Promise(function(res) { setTimeout(res, 120000); });
+} }, [ ... ]);
+```
+
+- 窗口时长覆盖异步任务周期（自动分析约 90s，取 120s 有余量）；窗口结束后异步 setState 仍不渲染，由用户交互兜底
+- **配套**：异步任务延迟触发（如 8s）确保首个 setState 落在窗口内
+- **无效方案**（别浪费时间）：renderTick hack（异步路径无订阅者）、`__operit_rerender_compose_dsl()` 直调（平台 Kotlin→JS 入口，脚本调用不消费）、`__operit_dispatch_compose_dsl_action` 自调（sendIntermediateResult 只在平台调用时注入）
+- **跨上下文信号**：工具调用结束后的异步回调里 `setEnv` 会因活动 callRuntime 失效而写入失败——完成信号一律走**文件 + 工具轮询**（分析完成写 trigger_result.json，UI 调 get_trigger_result 读），不要走 env
+
 

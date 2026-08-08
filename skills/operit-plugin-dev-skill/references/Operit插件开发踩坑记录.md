@@ -297,3 +297,63 @@ CME 与 CMS 前端同源（共用 memory_system_ui），因此 **CMS 的全部�
 
 - **实锤**：插件 API 配置（MEMORY_SYSTEM_ENDPOINT/KEY/MODEL）存在 Operit 应用私有数据 `shared_prefs/env_preferences.xml`——`ctx.setEnv/getEnv` 是平台级持久化，**卸载重装插件不清除**（所以"配置不需要重新设置"）；不是读 Operit 自己的 API 配置（datastore/api_settings）
 - **隐患**：CACHED_MEMORIES/CACHED_PERSONA 等大 JSON 缓存也塞在 env 里（文件 92KB+），每次读写序列化整个 XML——缓存类数据应落文件，env 只留配置与轻量状态
+
+## 十二、异步渲染与信号链路战役（2026-08-08 晚，CME v2.3.2 / CMS v2.3.3）
+
+> 本次战役打通了 Operit 前端"异步刷新"与"完成信号"两大底层机制，全部源码级实锤（官方仓库逆向），CME 先踩、CMS 同款移植验证。
+
+### 12.1 异步渲染真相：异步 setState 不重绘，onLoad 长窗口是正解
+
+- **现象**：自动分析（setTimeout 链/异步 IIFE）完成的文案与数据不显示，切 tab（用户交互）才出现；手动分析（action 链）正常
+- **源码级机制**（JsComposeDslBridge.kt / JsComposeDslRuntimeScript.kt）：compose_dsl UI 树只在 ①初始渲染 ②**action 分发** ③文本输入 ④平台侧 rerender 时重建；**异步 setState（setTimeout/Promise 回调）只写 stateStore，无订阅者即丢弃（notifyStateChanged）——不触发重绘**
+- **试错记录**（全部无效，供后人少走弯路）：
+  - ① renderTick hack（setState 不同值）：异步路径无订阅者，无效
+  - ② `__operit_rerender_compose_dsl()` UI 脚本直调：它是**平台 Kotlin 调 JS 的入口**（JsEngine.kt `rerenderComposeDslTree`），脚本直接调用只返回字符串、平台不消费
+  - ③ `__operit_dispatch_compose_dsl_action` 自调：**`sendIntermediateResult` 是平台调用 dispatch 时注入的回调，自调时 undefined** → 中间渲染结果无法送达平台（RuntimeScript 182 行实证）；actionId 可从 `createNode()` 返回值 `props.onClick.__actionId` 捕获，但信号仍送不到
+  - ④ `bundle.actionStore` 闭包内不对外暴露，无法按函数引用定位 actionId
+- **正解**：根节点 `onLoad` 本身是平台 action 分发，期间订阅 stateChange——**把 onLoad 的 `await setTimeout` 从 600ms 延长到 120s**，覆盖异步任务周期；期间任何 setState（含 setTimeout 链）都触发"中间渲染"实时推送平台重绘
+- **CMS 移植确认**：同款修复（onLoad 120s + 自动分析延迟 8s 确保落在窗口内）生效
+- **教训**：① 平台 action 分发是"订阅窗口"，异步刷新想送达平台必须借 action 窗口；② 试错前先读 RuntimeScript/Bridge 源码，三种 hack 每个都浪费一轮烧录验证
+
+### 12.2 完成信号：工具调用结束后的异步回调里 setEnv 失效，用文件通道
+
+- **现象**：CMS 自动分析"分析中"正常显示，90s 后报"分析超时"；但 trigger.json 实锤分析实际已完成并落盘（lastAnalyzedAt/lastResult=has_data）
+- **根因**（JsExecutionScriptBuilder.kt 实锤）：`setEnv`/`getEnv` 是**裸全局函数**，经 `__operitInvokeCallRuntime` 调用**活动 callRuntime**（每次工具调用/action 执行时的运行时，带 envOverrides）；`_runAutoAnalysis().then()` **异步回调执行时工具调用已 complete、活动 callRuntime 已失效** → `setEnv('MEMORY_SYSTEM_TRIGGER_RESULT')` 写入失败被 try/catch 吞掉 → UI 轮询 `ctx.getEnv` 永远读不到
+- **正解（CME 已验证、CMS 移植通过）**：**文件通道**——分析完成/失败时原子写 `trigger_result.json`（tmp+move），新增 `get_trigger_result` 工具，UI 轮询每 3s `callTool('...:get_trigger_result')` 读文件；用 `finishedAt > 轮询开始时间` 判定本次完成
+- **注意**：UI 桥 `ctx.getEnv` 走 `runtime.callRuntime.getEnv`（调用时注入的运行时），与工具环境读 env 不是同一路径——**跨上下文信号一律走文件+工具，不要走 env**
+- **教训**：工具包/hook 环境的"全局"函数（setEnv/getEnv/complete 等）都是活动 callRuntime 代理——**只能在工具调用执行期间使用**，异步回调里要用文件落盘
+
+### 12.3 探测 API 不可靠：Tools.Files.exists(path,'linux') 返回空对象
+
+- **现象**：detectPython 用 `Tools.Files.exists(path, 'linux')` 毫秒级探测，5 个候选全失败 → 误报"未找到可用的 python3"（连 `/usr/bin/python3` 都判不存在）
+- **实锤**：`debug_run_sandbox_script` 环境里 Tools.Files **全返回空对象**（`{}`），与真实工具执行环境不同，不能作准
+- **正解**：detectPython 直接返回固定路径（`/root/<project>/.venv/bin/python3.12`），**存在性校验下沉到启动脚本 bash**（`[ -x path ]` + 项目 venv → 旧全局 venv → 系统 python3 回退链）
+- **教训**：探测类 API 在真实环境行为与类型定义不符时，别在 JS 里反复探测——把校验放到能确定执行的 bash 启动脚本里
+
+### 12.4 冷启动保护窗口：hiddenExec 失败后 30s 快速失败
+
+- **现象**：Operit 重启早期（proot 未就绪），UI 的 trigger_analysis 与平台自动调用的 save_ui_state 绕过 onAppCreate 30s 延迟，直接触发 hiddenExec → 35s 卡死超时（`hiddenExec 二次超时`）
+- **修复**：ensureWorkerUp 加 `launch_blocked_until` 冷启动保护——hiddenExec 失败后 30s 内**快速失败不碰 hiddenExec**；UI 自动分析延迟 8s 触发；onAppCreate 30s 延迟兜底
+- **教训**：重启早期是竞态高发窗口，所有自动路径都要延迟或快速失败，不能裸调重型探测
+
+### 12.5 项目 venv：依赖只装项目 .venv，不写系统 python
+
+- **约束**（用户明确要求）：`deploy_install` 默认执行 `python3 -m venv .venv` 并激活后安装依赖，**不能再把依赖装进系统 python**（不用 `--break-system-packages`）
+- **实现**：venv 创建 → venv 解释器 probe → venv 的 pip 安装 → 二次确认；`deploy_status` 优先报告项目 venv；手动启动命令用 `/root/<project>/.venv/bin/python3.12`
+- **实测**：venv 创建 + 安装 onnxruntime/sqlite_vec/tokenizers 约 48s；venv 重启 worker `vec_available:true` PASS
+
+### 12.6 旧失败结果残留误显示
+
+- **现象**：修复后仍报"找不到 python3"——`trigger_result.json` 里是**上一版代码时代的旧失败结果**（finishedAt 早于新分析开始），UI 轮询读到旧数据误显示
+- **正解**：triggerAnalysis 启动时先写"分析中"标记（无 finishedAt）；UI 只认 finishedAt 且须晚于轮询开始时间
+- **教训**：文件通道的消费端必须校验结果新鲜度（finishedAt/水位线），否则旧数据会冒充新结果
+
+### 12.7 proot 内无 ps/pgrep：用 /proc 检测
+
+- proot 未装 procps，进程检测一律 `/proc` 遍历（`ls /proc | grep '^[0-9]'` + 逐个读 cmdline）+ `/proc/net/tcp` 查端口（8765 = 0x223D）
+- **实测**：多个 proot 实例并存时，worker 只在其一——检测必须按 cmdline 区分实例，不能只看进程名
+
+### 12.8 烧录验证流程（沉淀）
+
+- 烧录后必须验证：① toolpkg 归档内容（unzip -p 检查新代码标记）② 运行时缓存 `toolpkg_cache/<hash>/`（mtime=烧录时刻）③ **Operit 是否重启过**（运行实例加载的是内存旧代码，重启才加载新缓存）——三查齐全才能断定"部署成功但未生效"还是"没部署"
+- 涉及 UI 资源变更必须重启 Operit 再验证，避免新旧缓存混合
