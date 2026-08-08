@@ -1,11 +1,5 @@
 # operit-plugin-dev-pro
 
-> ⚠️ **本仓库已停止独立维护（2026-08-08 起）**。
-> 内容与 [operit-plugin-dev-skill](https://github.com/liqiming-whu/operit-plugin-dev-skill) 重复，统一以 operit-plugin-dev-skill 仓库为唯一权威（`skills/operit-plugin-dev-pro/` 目录即本技能，文档在其 `references/` 同步维护）。
-> 本地安装：从 operit-plugin-dev-skill 仓库同步到 `/sdcard/Download/Operit/skills/operit-plugin-dev-pro/`。本仓库仅保留归档。
-
----
-
 Operit 插件开发（手机端加强版）——官方 `SandboxPackage_DEV` 的实战增强。
 
 ## 这是什么

@@ -12,7 +12,7 @@
 ## 使用方式
 
 - **PC 端**：将 `skills/operit-plugin-dev-skill/` 目录作为任意 Agent skill 使用，参见其 [README](skills/operit-plugin-dev-skill/README.md)。
-- **Android 端**：将 `skills/operit-plugin-dev-pro/` 目录放入 `/sdcard/Download/Operit/skills/`（本地已安装），开发插件时加载本 skill 即可，参见其 [README](skills/operit-plugin-dev-pro/README.md)。
+- **Android 端**：安装 `SandboxPackage_DEV` skill（官方源）并启用；将 `skills/operit-plugin-dev-pro/` 目录放入 `/sdcard/Download/Operit/skills/`（本地已安装），开发插件时加载本 skill 即可，参见其 [README](skills/operit-plugin-dev-pro/README.md)。
 
 ## 权威来源
 
