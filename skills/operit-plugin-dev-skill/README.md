@@ -45,3 +45,4 @@ operit-plugin-dev-skill/
 
 - 更新类型 / 工具链参考：`git pull` 官方仓库（网络受限时按全局代理规则设置代理），再重新参考 `examples/types/`。
 - 禁止手动零散修补 `references/`；需要时整体替换。
+- **本目录是仓库的 PC 端版**；Android 手机端版见同级 `../operit-plugin-dev-pro/`（同一套文档，按环境分发）。两份文档统一在 `operit-plugin-dev-skill/references/` 维护后同步复制。
