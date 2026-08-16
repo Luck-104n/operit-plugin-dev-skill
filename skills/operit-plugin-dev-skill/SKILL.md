@@ -39,6 +39,19 @@ description: 在 Windows、macOS 或 Linux 桌面端开发、续写、迁移、�
 - 少量配置优先用 `env` 或工具参数，不为未来扩展提前升级格式。
 - 若官方类型没有所需能力，停止实现该部分并说明缺口；不要虚构 API。
 
+## UI架构与终端调用铁律
+> 这两部分是核心规范，不是可选建议：复杂 UI 架构决策与一切终端调用都必须遵守。详细证据与分级见 `references/COMPLEX_UI_ARCHITECTURE.md` 与 `references/TERMINAL_CALL_RULES.md`。
+
+### 复杂 UI：先决策，再动手
+- 多 Tab / 长列表 / 密集交互 / 表单 / 需要 Web 生态的界面，**必须先读 `references/COMPLEX_UI_ARCHITECTURE.md` 再设计**；简单界面（1-2 屏、列表 <100 条）保持纯 Compose（遵守 `COMPOSE_DSL_RULES.md`），不要默认上复杂架构。
+- 官方范本：薄 Compose 壳 + UI.WebView + web_runtime + 本地 Web 服务 + 前端。壳内只做注册入口、启动状态机、WebView 渲染；业务交互在浏览器。
+- 硬边界（违反即返工）：部署/恢复入口必须留在 Compose 壳（防自举死锁）；Web 服务运行期必须脱离 terminal 生命周期（`nohup setsid`，健康以 HTTP 为准）；不回退 hiddenExec；Web 与工具面共享同一数据权威。
+- 该架构能避免：120s action 窗口卡死、render 期 setState 无限重建、bridge 并发响应错配、异步更新 UI 不刷新、首帧无持久状态、复杂列表性能上限、自举死锁。
+
+### 终端调用：只走两个入口
+- 一切执行命令 / 启动进程 / 探测服务只走 `Tools.System.terminal`（会话：create/exec/input/screen/close）与 `Tools.System.shell`（一次性），遵守 `references/TERMINAL_CALL_RULES.md`。
+- 会话命名复用并补 close（不投递即弃）；被启动的服务进程运行期必须脱离 terminal 生命周期；生产代码禁用 hiddenExec；一切等待有界；启动期延迟；single-flight 防并发。
+- 违反任一条都会在实机上以 ANR / 坏会话 / 进程被杀的形式暴露（CME 2026-08-08 / 2026-08-10 实锤）。
 ## 普通 Sandbox Package
 
 1. 从 `references/SCRIPT_DEV_GUIDE.md` 检索 `METADATA`、`main`、`exports`、目标 `Tools` API，并在 `examples/index.json` 中找相近官方示例。
@@ -131,6 +144,8 @@ macOS/Linux 使用对应 `.sh`；也可直接运行 `tools/toolpkg/debug_toolpkg
 - `references/SCRIPT_DEV_GUIDE.md`：同步自官方仓库的普通包指南。
 - `references/TOOLPKG_FORMAT_GUIDE.md`：同步自官方仓库的 ToolPkg 指南。
 - `references/COMPOSE_DSL_RULES.md`：按证据等级整理的公共 UI/异步规则。
+- `references/COMPLEX_UI_ARCHITECTURE.md`：复杂 UI 架构设计规范（决策表、官方薄壳+WebView 分层、硬边界）。核心规范，涉及复杂 UI 必读。
+- `references/TERMINAL_CALL_RULES.md`：终端调用约束（两个入口、运行期零依赖、禁 hiddenExec、有界等待）。核心规范，一切终端调用必读。
 - `references/DEBUG_PLAYBOOK.md`：PC 与 Android 共用的按症状排障流程。
 - `references/CASE_STUDIES_CMS_CME.md`：有版本范围的 CMS/CME 历史案例。
 - `types/*.d.ts`：同步自 `Operit/examples/types` 的完整类型快照。

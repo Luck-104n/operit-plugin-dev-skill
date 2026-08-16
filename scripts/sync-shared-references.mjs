@@ -9,7 +9,7 @@ const targets = [
   path.join(repoRoot, "skills", "operit-plugin-dev-skill", "references"),
   path.join(repoRoot, "skills", "operit-plugin-dev-pro", "references"),
 ];
-const files = ["COMPOSE_DSL_RULES.md", "DEBUG_PLAYBOOK.md", "CASE_STUDIES_CMS_CME.md"];
+const files = ["COMPOSE_DSL_RULES.md", "DEBUG_PLAYBOOK.md", "CASE_STUDIES_CMS_CME.md", "COMPLEX_UI_ARCHITECTURE.md", "TERMINAL_CALL_RULES.md"];
 
 async function main() {
   const checkOnly = process.argv.includes("--check");
