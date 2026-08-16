@@ -20,22 +20,20 @@ Operit 源码 / API 最终权威：官方 GitHub 仓库 `https://github.com/AAsw
 
 ## 共享参考资料维护
 
-`COMPOSE_DSL_RULES.md`、`DEBUG_PLAYBOOK.md`、`CASE_STUDIES_CMS_CME.md` 在 PC 与 Android Pro 两个 Skill 中使用同一份维护源：
-
+`COMPOSE_DSL_RULES.md`、`DEBUG_PLAYBOOK.md`、`CASE_STUDIES_CMS_CME.md`、`COMPLEX_UI_ARCHITECTURE.md`、`TERMINAL_CALL_RULES.md` 在 PC 与 Android Pro 两个 Skill 中使用同一份维护源：
 ```text
 shared/references/
-├── COMPOSE_DSL_RULES.md
-├── DEBUG_PLAYBOOK.md
-└── CASE_STUDIES_CMS_CME.md
+├── COMPOSE_DSL_RULES.md          # UI/异步规则（证据等级）
+├── COMPLEX_UI_ARCHITECTURE.md    # 复杂 UI 架构设计规范（核心：决策表、薄壳+WebView 分层、硬边界）
+├── TERMINAL_CALL_RULES.md        # 终端调用约束（核心：两个入口、运行期零依赖、禁 hiddenExec）
+├── DEBUG_PLAYBOOK.md             # 按症状排障流程
+└── CASE_STUDIES_CMS_CME.md       # 有版本范围的历史案例
 ```
-
 只编辑 `shared/references/` 中的源文件，不直接修改两个 Skill 内的同名分发副本。修改后运行：
-
 ```powershell
 node scripts\sync-shared-references.mjs
 ```
-
-该脚本将三份文档同步到 `skills/operit-plugin-dev-skill/references/` 和 `skills/operit-plugin-dev-pro/references/`，保证 PC 与 Android Pro 的公共规则、排障方法和案例证据一致。PC 专属流程维护在 `DESKTOP_WORKFLOW.md`，Android 专属流程维护在 `MOBILE_WORKFLOW.md`。
+该脚本将五份文档同步到 `skills/operit-plugin-dev-skill/references/` 和 `skills/operit-plugin-dev-pro/references/`，保证 PC 与 Android Pro 的公共规则、核心架构/终端规范、排障方法和案例证据一致。PC 专属流程维护在 `DESKTOP_WORKFLOW.md`，Android 专属流程维护在 `MOBILE_WORKFLOW.md`。
 
 提交前可只检查副本是否漂移，不改写文件：
 
