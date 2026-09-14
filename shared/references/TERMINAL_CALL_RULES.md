@@ -39,3 +39,18 @@
 1. 不回退 hiddenExec、不恢复隐式业务拉起、不用宽泛 kill（按 PID 精确管理，PID 文件为准）。
 2. 任何终端调用改动都要进版本库且可回滚；服务进程管理统一收敛到独立模块（如 `worker_runtime`），对外只暴露语义接口（`ensureWorker/installDeps/restartWorker`），内部 transport 用 `Tools.System.terminal`。
 3. 与 `COMPLEX_UI_ARCHITECTURE.md` 配合：Web 服务/Worker 的启动投递、健康确认、资源同步均按本文件执行。
+
+
+### `setsid` 只覆盖「终端会话结束」，不覆盖「proot 重启」（2026-09-14 实测）
+
+- 按上文用 `nohup setsid ... &` 启动服务端后，实测其 `SID` 等于自身 `PID`（自己是会话首领），与调用方 shell 的 `SID` 不同 → **会话终止的 `SIGHUP` 不会波及它**。判定方法：比较 `/proc/<pid>/stat` 第 6 字段（SID）与自身 PID。
+- 但 `setsid` **挡不住整个 proot / Linux 运行时被重启或回收** —— 那是整树杀。
+- 因此「运行期脱离 terminal 生命周期」需要**两层互补**：
+
+  | 机制 | 覆盖的失效场景 |
+  |---|---|
+  | `nohup setsid ... &` + 日志/PID 文件 | 终端会话结束（SIGHUP） |
+  | 工具侧自愈（探测健康 → 不在则自动拉起） | proot / Linux 运行时重启 |
+
+- **与「启动期延迟」配合**：自愈入口不要无脑在 App 启动瞬间触发（早期 create 有 executor 竞态，可能产生坏会话）；建议保守延迟或在首次失败后重试。
+- 自愈实现上「健康判断一律以 HTTP / 进程探测为准」这条同样适用：不要用 terminal 会话存活当作服务健康前提。
