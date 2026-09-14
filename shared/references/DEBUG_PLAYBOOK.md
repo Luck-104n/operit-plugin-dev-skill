@@ -99,3 +99,60 @@ PC 端同样不要用 Node mock 宣称已验证 Android QuickJS、`Tools.*`、Ja
 | `calculateInputTokens` | `{ tokens: number }` |
 
 - 返回结构不对**不会**导致 parse 失败，但上层解析不到数据（token 计 0、连接测试永远失败），排查时先对照 types。
+
+
+## 工具名解析、安装刷新与运行时环境（2026-09-14 实测补充，Operit 1.12.1+6）
+
+### 工具无响应：工具名解析三类坑
+
+1. **裸工具名无效**：`ctx.callTool("share_file", ...)` 必须写成全限定 `包:工具`（如 `extended_file_tools:share_file`）。
+2. **前缀用错**：ToolPkg 的工具名是 `<子包id>:<工具名>`，**不是** `<toolpkg_id>:<工具名>`（容器 id 与子包 id 是两个概念）。
+3. **包名不要猜**：若 `getCurrentToolPkgId()` 不存在，`getCurrentToolPkgId() === getCurrentPackageName()` 这类判断会被跳过，从而返回**容器 id** → 生成不存在的工具名。正确做法是**候选列表逐个尝试**（子包 id / 容器 id），成功即记住；并校验 `resolveToolName` 的返回值**必须含 `:`** 才采用，否则回退 `包:工具`。
+
+> 实测探针输出：`resolved=via_bridge:via_status`（全限定、子包 id 正确）。
+
+### 「安装后仍是旧代码」的三种具体形态
+
+| 形态 | 判据 | 处理 |
+|---|---|---|
+| **包文件丢失** | 只有**读资源**的工具报 `Step error:`（后面无内容），其他工具正常 | `ToolPkg.readResource` 依赖包文件存在；检查 `Android/data/<pkg>/files/packages/` 下 `.toolpkg` 是否还在 |
+| **UI module 缓存** | 磁盘 UI 已更新（md5 一致、缓存副本也一致），页面行为仍旧 | 发版时**递增** `registerToolboxUiModule({id})` 的 id（并给 `params` 带 `rev`）可**免重启**生效；`main.js` 注册项变化、包级 `main` 上下文内存态仍建议重启 |
+| **工具名解析错误** | 界面按钮全失败、直调工具正常 | 见上 |
+
+### `debug_install_toolpkg` 的两个坑
+
+- **`source_path` 与目标安装路径同名**时会失败：返回 `Unknown error`，日志停在 `Archive path differs from target; replacing target archive before copy.` → `Execution failed`，**且可能删掉包文件**。应先把包复制到别处（如 `/sdcard/Download/Operit/tmp_xxx.toolpkg`）再作为 `source_path`，并**操作前先备份**。
+- **`Duplicate package name`**：`related_load_errors` 出现该错误 = packages 目录里有两份同 id 的包（报错会**附带违规源路径**），只留一份。另：手工复制进该目录后需 `chmod 664` + `chown root:1078`，否则 App 读不到。
+
+### `api_version` 门禁与日志定位
+
+- 工具侧只报 `ToolPkg container did not appear after debug install: <id>`，**不带原因**。
+- 原因在 `packageLogs/` 里，且是**干净的结构化日志**。注意该目录同时记录终端命令与对话文本，**grep 要精确**：
+
+  ```bash
+  grep -rn 'E/ToolPkg|loadToolPkg|IllegalArgumentException|parse failed' /sdcard/Download/Operit/packageLogs/
+  ```
+
+- 实测示例（manifest 写 `api_version: "9.9.9"`）：
+
+  ```
+  E/ToolPkg PKG: loadToolPkgFromExternalFile failed, source=.../com.test.apiversion.toolpkg
+  java.lang.IllegalArgumentException: ToolPkg API version '9.9.9' is not supported by Operit 1.12.1+6.
+    Supported ToolPkg API versions: 1.0.0, 1.0.1. ToolPkg API 1.0.1 requires Operit 1.12.1+4 or newer.
+    at com.ai.assistance.operit.core.tools.packTool.ToolPkgApiCompatibility.requireSupported(ToolPkgApiVersion.kt:108)
+    at com.ai.assistance.operit.core.tools.packTool.ToolPkgLoader.loadToolPkgFromExternalFile(ToolPkgLoader.kt:29)
+  ```
+
+  对照组：同结构、`api_version: "1.0.0"` 的包安装成功、`related_load_errors` 为空 → 变量隔离成立。
+
+### Android 环境与 Linux 环境是两套文件视图
+
+| 路径 | `environment:"android"` | `environment:"linux"` |
+|---|---|---|
+| App 内部 `/data/user/0/<pkg>/files/...` | ✅ | ✅ |
+| `/sdcard/...`（**未**授予「所有文件访问权限」时） | ❌ | ✅ |
+| `/sdcard/...`（已授予「所有文件访问权限」后） | ✅ | ✅ |
+
+- `Tools.Files.share` **仅 android 环境可用**（linux 环境返回 `File sharing is not supported in Linux environment`）。
+- 需要「Android 侧可读」的文件，放到 App 内部 files 目录（用 `Java.getApplicationContext().getFilesDir()` 取），它始终可读。
+- 诊断路径问题时**先切环境对照**，不要先怀疑路径拼错。
