@@ -54,3 +54,12 @@ CMS/CME 的旧版本实验出现过响应错配。不要据此永久禁止所有
 ## UI 一致性
 
 优先使用 `ctx.MaterialTheme.colorScheme` 和官方 Material 组件，不硬编码主题色。不确定组件或属性时检索最新 types，而不是套用 React/Web 属性。
+
+
+### `ctx.callTool` 的返回值形态（2026-09-14 实测，Operit 1.12.1+6）
+
+- **实测结论**：`ctx.callTool(...)` 返回的是 **JSON 字符串**，不是对象。探针记录：`typeof=string`、`isConstructor=String`、内容形如 `{"success":true,"data":{...}}` 的文本。
+- 类型定义本身也未承诺对象：`compose-dsl.d.ts` 写的是 `callTool<T = any>(toolName: string, params?: Record<string, unknown>): Promise<T>`；`core.d.ts` 里 sandbox 层 `callTool(...)` 的返回类型同样是 `string`。
+- **因此数据提取必须两种形态都兼容**（字符串先 `JSON.parse` 再递归处理）；只判断 `typeof r !== "object"` 就丢弃，会让所有取数分支拿到 `null`。
+- **症状特征**：多个按钮同时报通用失败文案（例如「状态检测失败」「可点击=0」），但用 `package_proxy` 直调同名工具完全正常。这类「界面不报错/只报笼统文案，但结果全错」优先怀疑返回值形态。
+- 建议：不确定时先用一个只读工具做形态探针，把 `typeof` 结果写盘，不要假定一定是对象。
