@@ -79,3 +79,15 @@
 4. 再打开真实 UI 或调用工具。
 
 应用私有 `toolpkg_cache` 受权限和实现版本影响，不把它作为通用脚本的强制检查项；需要深入排障时结合当前源码、root/Shizuku 权限和日志检查。
+
+
+## 7. 补充（2026-09-14 实测，Operit 1.12.1+6）
+
+- **第 5 步**：`debug_install_toolpkg` 的 `source_path` **不要**直接指向 `packages/` 下的目标路径（会返回 `Unknown error` 并可能删掉包文件），详见 `DEBUG_PLAYBOOK.md`。
+- **第 6 步部署核验**：除「开发源 vs 外部安装产物 vs manifest 版本」外，再加一条硬判据 —— **`related_load_errors` 必须为空**。
+- **平台版本与发布通道的读法**：
+  - 版本：`PackageManager.getPackageInfo(pkg, 0).versionName`（实测 `1.12.1+6`，versionCode 49）。
+  - 发布通道：DataStore 的 `user_preferences.preferences_pb` 里 **`beta_plan_enabled`**（实测为 `true`，即 Beta 计划 / 测试版）。
+  - ⚠️ **不要用 `isDebugBuild` 判断发布通道**：它只是 `ApplicationInfo.flags & FLAG_DEBUGGABLE`，而 Beta 通道构建同样是 release 签名（实测 `isDebugBuild=false`）。
+- **`api_version` 门禁**：manifest 声明的 ToolPkg API 版本必须被当前应用支持（本机支持 `1.0.0`、`1.0.1`），否则包会进入包加载错误；排查方式见 `DEBUG_PLAYBOOK.md`。
+- **`ctx.callTool` 返回 JSON 字符串**（非对象）：界面侧数据提取需双兼容，详见 `COMPOSE_DSL_RULES.md`。
