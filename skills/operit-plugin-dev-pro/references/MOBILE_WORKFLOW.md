@@ -81,13 +81,16 @@
 应用私有 `toolpkg_cache` 受权限和实现版本影响，不把它作为通用脚本的强制检查项；需要深入排障时结合当前源码、root/Shizuku 权限和日志检查。
 
 
-## 7. 补充（2026-09-14 实测，Operit 1.12.1+6）
+## 7. 当前版本约束：安装结果与环境证据
 
-- **第 5 步**：`debug_install_toolpkg` 的 `source_path` **不要**直接指向 `packages/` 下的目标路径（会返回 `Unknown error` 并可能删掉包文件），详见 `DEBUG_PLAYBOOK.md`。
-- **第 6 步部署核验**：除「开发源 vs 外部安装产物 vs manifest 版本」外，再加一条硬判据 —— **`related_load_errors` 必须为空**。
-- **平台版本与发布通道的读法**：
-  - 版本：`PackageManager.getPackageInfo(pkg, 0).versionName`（实测 `1.12.1+6`，versionCode 49）。
-  - 发布通道：DataStore 的 `user_preferences.preferences_pb` 里 **`beta_plan_enabled`**（实测为 `true`，即 Beta 计划 / 测试版）。
-  - ⚠️ **不要用 `isDebugBuild` 判断发布通道**：它只是 `ApplicationInfo.flags & FLAG_DEBUGGABLE`，而 Beta 通道构建同样是 release 签名（实测 `isDebugBuild=false`）。
-- **`api_version` 门禁**：manifest 声明的 ToolPkg API 版本必须被当前应用支持（本机支持 `1.0.0`、`1.0.1`），否则包会进入包加载错误；排查方式见 `DEBUG_PLAYBOOK.md`。
-- **`ctx.callTool` 返回 JSON 字符串**（非对象）：界面侧数据提取需双兼容，详见 `COMPOSE_DSL_RULES.md`。
+以下观察来自 2026-09-14，Operit `1.12.1+6`（versionCode 49，Beta 更新计划开启）；设备权限和调试工具版本未随摘要完整记录，目标环境需复验。
+
+- **第 5 步**：使用独立暂存包作为 `debug_install_toolpkg.source_path`，并在替换前备份现有安装包。现场替换失败不等于相同路径必失败，完整路径与安装器版本的排查见 `DEBUG_PLAYBOOK.md`。
+- **第 6 步部署核验**：检查完整安装结果的 `data.related_load_errors`，该字段应是非 null、非数组的对象映射，且 `Object.keys(errors).length === 0`。字段缺失、类型错误或未取得刷新结果时标记未验证，不能视为空；此字段由安装工具返回，`verify_deployment.js` 仅做文件存在性核验并列出人工检查项。
+- 空错误映射只是必要检查，还需核对实际加载的目标包、manifest 版本与代码标记，并完成第 5、6 节的真实 UI / 工具验证。隔离开发探针中的免重启缓存观察不替代正式部署的重启核验。
+- **平台版本与构建记录**：
+  - 用 `PackageManager.getPackageInfo(pkg, 0)` 记录 versionName、versionCode；现场分别为 `1.12.1+6`、49。
+  - `user_preferences.preferences_pb` 的 `beta_plan_enabled=true` 记录 Beta 更新计划开启；它是可修改的更新偏好，不能单独确定已安装产物的发布通道。构建来源或发布通道需另行核实，无法核实时标记未知。
+  - `ApplicationInfo.flags & FLAG_DEBUGGABLE` 只反映可调试标志；现场为 false，不能据此判断发布通道或签名身份。
+- **`api_version` 门禁**：声明必须被目标应用支持；现场日志列出 `1.0.0`、`1.0.1`。支持集合及失败原因的核对方式见 `DEBUG_PLAYBOOK.md`。
+- **`ctx.callTool` 返回形态**：现场所测工具返回 JSON 文本；目标工具需探针确认，并兼容契约允许的对象与文本结果，见 `COMPOSE_DSL_RULES.md`。

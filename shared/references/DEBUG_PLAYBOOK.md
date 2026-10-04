@@ -5,7 +5,7 @@
 ## 通用顺序
 
 1. 精确定义现象、复现步骤、期望结果和实际结果。
-2. 记录 Operit 版本、插件版本、packageId、开发环境、设备和权限模式。
+2. 记录 Operit versionName/versionCode、构建来源或已核实的发布通道、插件与调试工具版本、packageId、开发环境、设备和权限模式；未核实的字段明确标记未知。
 3. 从当前 types、官方示例和必要的 Operit 源码确认机制。
 4. 建立最小复现；一轮只改变一个变量。
 5. 在源代码出口、bridge 前后、UI 入口和最终展示点放置带时间与调用 ID 的探针。
@@ -101,36 +101,39 @@ PC 端同样不要用 Node mock 宣称已验证 Android QuickJS、`Tools.*`、Ja
 - 返回结构不对**不会**导致 parse 失败，但上层解析不到数据（token 计 0、连接测试永远失败），排查时先对照 types。
 
 
-## 工具名解析、安装刷新与运行时环境（2026-09-14 实测补充，Operit 1.12.1+6）
+## 当前版本约束：工具名解析、安装刷新与运行时环境
+
+以下现场观察来自 2026-09-14 的 Operit `1.12.1+6`（versionCode 49，Beta 更新计划开启）。摘要未完整记录设备权限、调试工具版本和 Linux 挂载配置；它们是目标环境复验的起点，不是跨版本保证。源码对照固定在官方 `0d2bbdd`（构建声明也是 `1.12.1+6`），不据此认定现场安装器与该快照完全相同。
 
 ### 工具无响应：工具名解析三类坑
 
-1. **裸工具名无效**：`ctx.callTool("share_file", ...)` 必须写成全限定 `包:工具`（如 `extended_file_tools:share_file`）。
-2. **前缀用错**：ToolPkg 的工具名是 `<子包id>:<工具名>`，**不是** `<toolpkg_id>:<工具名>`（容器 id 与子包 id 是两个概念）。
-3. **包名不要猜**：若 `getCurrentToolPkgId()` 不存在，`getCurrentToolPkgId() === getCurrentPackageName()` 这类判断会被跳过，从而返回**容器 id** → 生成不存在的工具名。正确做法是**候选列表逐个尝试**（子包 id / 容器 id），成功即记住；并校验 `resolveToolName` 的返回值**必须含 `:`** 才采用，否则回退 `包:工具`。
+1. **名称不完整**：现场 `ctx.callTool("share_file", ...)` 未命中预期工具，改用 `extended_file_tools:share_file` 后可调用。包工具使用当前注册的 `包:工具` 名称；不要将这一观察推广到所有内置工具。
+2. **前缀用错**：现场工具注册在子包下，实际名称是 `via_bridge:via_status`。从当前注册信息或 manifest 子包声明确认运行时包名，区分容器 id、子包 id 与实际注册名。
+3. **解析结果未经核对**：先检查当前 types 和 `resolveToolName` 返回值。包工具结果应含有效的包名与工具名，含 `:` 仅是格式检查；解析能力缺失时使用已确认的注册名。候选验证使用只读探针，仅在明确的“工具不存在”错误后尝试下一候选；业务失败、超时或结果不明确时停止，避免重复副作用。
 
 > 实测探针输出：`resolved=via_bridge:via_status`（全限定、子包 id 正确）。
 
 ### 「安装后仍是旧代码」的三种具体形态
 
-| 形态 | 判据 | 处理 |
+| 形态 | 现场线索 | 处理 |
 |---|---|---|
-| **包文件丢失** | 只有**读资源**的工具报 `Step error:`（后面无内容），其他工具正常 | `ToolPkg.readResource` 依赖包文件存在；检查 `Android/data/<pkg>/files/packages/` 下 `.toolpkg` 是否还在 |
-| **UI module 缓存** | 磁盘 UI 已更新（md5 一致、缓存副本也一致），页面行为仍旧 | 发版时**递增** `registerToolboxUiModule({id})` 的 id（并给 `params` 带 `rev`）可**免重启**生效；`main.js` 注册项变化、包级 `main` 上下文内存态仍建议重启 |
+| **包文件丢失** | 移走 `.toolpkg` 后，读资源工具报空内容 `Step error:`，不读资源的工具正常 | 检查外部安装包、资源声明与加载日志；该错误文本不能单独确定根因 |
+| **UI module 缓存** | 磁盘 UI 与预期摘要一致，页面行为仍旧；现场调整 module id 与 `params.rev` 后观察到免重启刷新 | 可在隔离开发探针中同步调整 id 及所有引用，验证缓存行为；正式部署仍按重启流程核验，不把递增 id 作为发版规则 |
 | **工具名解析错误** | 界面按钮全失败、直调工具正常 | 见上 |
 
-### `debug_install_toolpkg` 的两个坑
+### `debug_install_toolpkg` 的安装线索
 
-- **`source_path` 与目标安装路径同名**时会失败：返回 `Unknown error`，日志停在 `Archive path differs from target; replacing target archive before copy.` → `Execution failed`，**且可能删掉包文件**。应先把包复制到别处（如 `/sdcard/Download/Operit/tmp_xxx.toolpkg`）再作为 `source_path`，并**操作前先备份**。
-- **`Duplicate package name`**：`related_load_errors` 出现该错误 = packages 目录里有两份同 id 的包（报错会**附带违规源路径**），只留一份。另：手工复制进该目录后需 `chmod 664` + `chown root:1078`，否则 App 读不到。
+- **替换安装包时失败**：现场返回 `Unknown error`，日志出现 `Archive path differs from target; replacing target archive before copy.` 后失败，并观察到包文件丢失。官方快照对相同规范化路径会跳过复制；摘要不足以证明“相同路径必失败”。复现时记录源、目标完整路径、路径别名和安装器版本。使用独立暂存目录（如 `/sdcard/Download/Operit/tmp_xxx.toolpkg`），操作前备份现有包。[复制分支](https://github.com/AAswordman/Operit/blob/0d2bbdd3072cf304159ff34910f7aec4ec63d74e/examples/operit_editor.ts#L3158-L3164)。
+- **`Duplicate package name`**：表示注册名称冲突。结合 `data.related_load_errors` 的源路径，检查普通包、ToolPkg 容器和子包的实际注册名，确认冲突双方后处理。不要仅凭错误文本删除文件；手工安装的可读性需按当前设备权限、目录属性与访问环境验证，不固定 UID/GID。[重复名称检查](https://github.com/AAswordman/Operit/blob/0d2bbdd3072cf304159ff34910f7aec4ec63d74e/app/src/main/java/com/ai/assistance/operit/core/tools/packTool/PackageManager.kt#L1184-L1197)。
 
 ### `api_version` 门禁与日志定位
 
-- 工具侧只报 `ToolPkg container did not appear after debug install: <id>`，**不带原因**。
-- 原因在 `packageLogs/` 里，且是**干净的结构化日志**。注意该目录同时记录终端命令与对话文本，**grep 要精确**：
+- manifest 的 `api_version` 必须被目标 Operit 构建支持。所测环境的错误日志列出 `1.0.0`、`1.0.1`，其中 `1.0.1` 要求 Operit `1.12.1+4` 起；支持集合以目标构建源码和加载结果为准。[兼容规则](https://github.com/AAswordman/Operit/blob/0d2bbdd3072cf304159ff34910f7aec4ec63d74e/app/src/main/java/com/ai/assistance/operit/core/tools/packTool/ToolPkgApiVersion.kt#L74-L112)。
+- 遇到 `ToolPkg container did not appear after debug install: <id>`，先检查完整安装结果的 `data.related_load_errors` 与 `refresh_result`；工具可携带结构化原因，再结合本次安装的应用日志定位。
+- `packageLogs/` 同时包含应用错误、终端命令与对话文本。先选本次安装时间段的日志，再检索错误标记，并结合目标包 id、源路径和上下文核对来源；关键词匹配本身不能排除命令或对话文本：
 
   ```bash
-  grep -rn 'E/ToolPkg|loadToolPkg|IllegalArgumentException|parse failed' /sdcard/Download/Operit/packageLogs/
+  grep -rnE 'E/ToolPkg|loadToolPkg|IllegalArgumentException|parse failed' /sdcard/Download/Operit/packageLogs/
   ```
 
 - 实测示例（manifest 写 `api_version: "9.9.9"`）：
@@ -143,9 +146,11 @@ PC 端同样不要用 Node mock 宣称已验证 Android QuickJS、`Tools.*`、Ja
     at com.ai.assistance.operit.core.tools.packTool.ToolPkgLoader.loadToolPkgFromExternalFile(ToolPkgLoader.kt:29)
   ```
 
-  对照组：同结构、`api_version: "1.0.0"` 的包安装成功、`related_load_errors` 为空 → 变量隔离成立。
+  现场对照：保持包结构相同，仅将 `api_version` 改为 `1.0.0` 后安装成功，`related_load_errors` 为空。该对照支持本次版本拒绝的归因，不证明包功能或其他构建的兼容性。
 
-### Android 环境与 Linux 环境是两套文件视图
+### Android 与 Linux 文件访问的现场对照
+
+下表记录所测文件的结果。Linux 挂载、Android 权限模式与具体工具会改变可见范围，不能推广为整个目录的访问保证。
 
 | 路径 | `environment:"android"` | `environment:"linux"` |
 |---|---|---|
@@ -153,6 +158,6 @@ PC 端同样不要用 Node mock 宣称已验证 Android QuickJS、`Tools.*`、Ja
 | `/sdcard/...`（**未**授予「所有文件访问权限」时） | ❌ | ✅ |
 | `/sdcard/...`（已授予「所有文件访问权限」后） | ✅ | ✅ |
 
-- `Tools.Files.share` **仅 android 环境可用**（linux 环境返回 `File sharing is not supported in Linux environment`）。
-- 需要「Android 侧可读」的文件，放到 App 内部 files 目录（用 `Java.getApplicationContext().getFilesDir()` 取），它始终可读。
-- 诊断路径问题时**先切环境对照**，不要先怀疑路径拼错。
+- 现场 `Tools.Files.share` 在 linux 环境返回 `File sharing is not supported in Linux environment`；目标环境按当前接口和实际调用验证。
+- Android 应用侧文件可优先放到 `Java.getApplicationContext().getFilesDir()` 返回的目录，并通过实际消费文件的工具验证可读性；Linux 侧需另行确认挂载与权限。
+- 诊断时同时记录路径、调用工具、执行环境、权限与挂载信息，用同一只读操作做对照。

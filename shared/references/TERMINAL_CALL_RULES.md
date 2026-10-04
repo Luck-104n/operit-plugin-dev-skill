@@ -41,16 +41,15 @@
 3. 与 `COMPLEX_UI_ARCHITECTURE.md` 配合：Web 服务/Worker 的启动投递、健康确认、资源同步均按本文件执行。
 
 
-### `setsid` 只覆盖「终端会话结束」，不覆盖「proot 重启」（2026-09-14 实测）
+## 当前版本约束：`setsid` 与运行时回收
 
-- 按上文用 `nohup setsid ... &` 启动服务端后，实测其 `SID` 等于自身 `PID`（自己是会话首领），与调用方 shell 的 `SID` 不同 → **会话终止的 `SIGHUP` 不会波及它**。判定方法：比较 `/proc/<pid>/stat` 第 6 字段（SID）与自身 PID。
-- 但 `setsid` **挡不住整个 proot / Linux 运行时被重启或回收** —— 那是整树杀。
-- 因此「运行期脱离 terminal 生命周期」需要**两层互补**：
+- **版本相关证据**：2026-09-14，Operit `1.12.1+6`（versionCode 49，Beta 更新计划开启）中，用 `nohup setsid ... &` 启动的所测服务 `PID=SID=20005`，调用方 shell 的 `SID=29469`。设备权限与运行时配置未随摘要完整记录，采用前需复验。
+- SID 不同证明新会话已建立，不证明所有关闭路径都不发送信号。`setsid` 建立新会话，`nohup` 设置忽略 `SIGHUP`；宿主主动按 PID、进程树或运行时范围清理仍可能终止服务。健康检查还需覆盖实际 terminal close 与运行时重启。[setsid](https://man7.org/linux/man-pages/man2/setsid.2.html)、[nohup](https://man7.org/linux/man-pages/man1/nohup.1.html)。
+- 可用 `ps` 的 PID/SID 输出核对会话；读取 `/proc/<pid>/stat` 第 6 字段时需正确解析带括号的 comm，不能直接按空白切分。
+- 现场报告运行时重启或回收会终止服务；独立会话不能保证跨 App 或 Linux 运行时重启存活。关闭路径与回收范围以目标环境测试为准。
 
-  | 机制 | 覆盖的失效场景 |
-  |---|---|
-  | `nohup setsid ... &` + 日志/PID 文件 | 终端会话结束（SIGHUP） |
-  | 工具侧自愈（探测健康 → 不在则自动拉起） | proot / Linux 运行时重启 |
+## 项目策略：显式恢复服务
 
-- **与「启动期延迟」配合**：自愈入口不要无脑在 App 启动瞬间触发（早期 create 有 executor 竞态，可能产生坏会话）；建议保守延迟或在首次失败后重试。
-- 自愈实现上「健康判断一律以 HTTP / 进程探测为准」这条同样适用：不要用 terminal 会话存活当作服务健康前提。
+- 现场项目在服务被终止后，通过带自愈行为的状态工具重新拉起服务。这属于该项目恢复策略，不是只读状态查询的默认契约。
+- 状态查询只报告健康状态；需要恢复时调用显式 `ensureWorker` / `restartWorker` 入口。启动由 single-flight 和有界健康轮询管理，遵守上文“不恢复隐式业务拉起”的边界。
+- 恢复需等运行时就绪；启动期延迟与重试参数按目标环境验证，不能保证 App 被终止期间仍可恢复。健康以 HTTP / 进程探测为准。
